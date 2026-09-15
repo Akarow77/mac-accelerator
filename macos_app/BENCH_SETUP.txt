@@ -1,0 +1,29 @@
+Mac Accelerator 0.3.0 — independent bench research project
+
+This app no longer needs a sunnypilot checkout. Select the Mac Accelerator project
+folder containing run_coreml_server.sh. Default mode is localhost only.
+
+Requirements: Apple Silicon, macOS 15+, uv, Python 3.12 and trusted model artifacts.
+From the standalone project folder:
+  ./setup_coreml_env.sh
+  .coreml-venv/bin/python import_model.py --onnx /path/model.onnx \
+    --metadata /path/model_metadata.pkl --coreml /path/model.mlpackage
+
+Only use metadata from a trusted source: the runtime loads Python pickle, which
+can execute code. The app ZIP does not include models or a Python environment.
+To convert instead of importing Core ML:
+  ./setup_coreml_env.sh --conversion
+  ./compile_coreml.sh
+
+Start runs an authenticated server. Optional USB mode configures USB-NCM for
+synthetic off-road bench diagnostics; it does not install firmware or live capture.
+No vehicle control, modeld hook, device parameter writer or on-road mode is included.
+Service Ready is not driving readiness. This is not a generic arbitrary-model host:
+the current input/output contract is the tested Big Model driving-policy protocol.
+
+Independent app identifier: dev.akarow.mac-accelerator
+Settings/key storage is separate from the old Sunnypilot Mac Accelerator app.
+Do not run both servers on port 8066 at the same time.
+
+The app is ad-hoc signed, not Apple-notarized. Do not disable Gatekeeper globally.
+Source and setup: https://github.com/Akarow77/mac-accelerator

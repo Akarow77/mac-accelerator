@@ -1,0 +1,5 @@
+-r requirements-runtime.txt
+onnx==1.22.0
+onnx2torch==1.5.15
+torch==2.7.0
+torchvision==0.22.0
