@@ -2,6 +2,7 @@
 """Observation-only replay. No live capture, vehicle access, automatic retry or control output."""
 
 import argparse
+import gc
 import hashlib
 import json
 import math
@@ -14,6 +15,7 @@ import numpy as np
 
 from accelerator_client import AcceleratorClient
 from accelerator_protocol import read_auth_key
+from macos_performance import configure_user_interactive_qos
 from transport import POLICY_INPUTS, WARPED_BYTES, WARPED_SHAPE
 
 
@@ -62,7 +64,7 @@ class ShadowRecorder:
     self.log.write({'event': 'failed', 'frame': self.next_frame,
                     'reason': str(error)[:1000], 'roadReady': False}, terminal=True)
 
-  def process(self, frame_id: int, capture_ns: int, pixels: bytes, policy: bytes):
+  def process(self, frame_id: int, capture_ns: int, pixels: bytes, policy: bytes, *, preprocessing=None, wake_lateness_ms=None):
     if self.failed:
       raise RuntimeError('shadow failure latched; start a new explicit run')
     try:
@@ -93,7 +95,8 @@ class ShadowRecorder:
                       'scheduledPlaybackToOutputMs': age_ms,
                       'roundTripMs': result.round_trip_ms, 'inferenceMs': result.inference_ms,
                       'withinTimingTarget': within, 'roadReady': False,
-                      'outputSha256': hashlib.sha256(result.output).hexdigest()})
+                      'outputSha256': hashlib.sha256(result.output).hexdigest(), 'preprocessing': preprocessing,
+                      'sourceWakeLatenessMs': wake_lateness_ms})
       self.next_frame += 1
       self.last_capture = capture_ns
       self.eligible += int(context)
@@ -115,8 +118,10 @@ def main():
   parser = argparse.ArgumentParser(description=__doc__)
   source = parser.add_mutually_exclusive_group(required=True)
   source.add_argument('--synthetic', action='store_true')
+  source.add_argument('--synthetic-nv12', action='store_true', help='include full owned NV12 pair preparation on this host')
   source.add_argument('--warps', type=Path, help='uint8 .npy [frames,2,6,128,256], allow_pickle=False')
   parser.add_argument('--policy', type=Path, help='matching float32 .npy [frames,12], required for recorded warps')
+  parser.add_argument('--preprocess-profile', type=Path, help='same-hardware measured profile for --synthetic-nv12')
   parser.add_argument('--frames', type=int, default=120)
   parser.add_argument('--host', default='::1')
   parser.add_argument('--port', type=int, default=8066)
@@ -129,6 +134,10 @@ def main():
     parser.error('frames must be 1..72000; --warps and --policy must be supplied together')
   if len(args.expected_model_sha256) != 64 or any(c not in '0123456789abcdef' for c in args.expected_model_sha256):
     parser.error('expected SHA-256 must be 64 lowercase hexadecimal characters')
+  if args.preprocess_profile and not args.synthetic_nv12:
+    parser.error('--preprocess-profile requires --synthetic-nv12')
+  if args.synthetic_nv12 and not args.preprocess_profile:
+    parser.error('--synthetic-nv12 requires a verified --preprocess-profile from this Mac')
   warps = policy_rows = None
   if args.warps:
     warps = np.load(args.warps, mmap_mode='r', allow_pickle=False)
@@ -145,22 +154,59 @@ def main():
                              expected_backend='COREML_ANE', expected_output_floats=18452,
                              expected_model_sha256=args.expected_model_sha256)
   recorder = ShadowRecorder(client, log)
+  gc_was_enabled = gc.isenabled()
   try:
-    log.write({'event': 'start', 'source': 'synthetic' if args.synthetic else 'recorded-warps',
+    qos = configure_user_interactive_qos()
+    preprocessor = transforms = nv12_frames = None
+    preprocessing_profile = None
+    if args.synthetic_nv12:
+      from camera_preprocess import NV12Layout, OwnedCameraFrame, PairPreprocessor
+      backend = 'cpu'
+      reference_device = None
+      if args.preprocess_profile:
+        from profile_preprocess import validate_profile
+        with args.preprocess_profile.open() as source_file:
+          profile = json.load(source_file)
+          choice = validate_profile(profile)
+          reference_device = profile.get('mapReferenceDevice')
+          preprocessing_profile = {'selectedPreprocessor': choice, 'hardware': profile['hardware']}
+        backend = {'tinygrad-metal-gather': 'tinygrad-metal', 'native-cpu-gather': 'native-cpu',
+                   'cpu-gather-cached': 'cpu'}[choice]
+      layout = NV12Layout(1928, 1208, 2048, 1216, 608)
+      preprocessor = PairPreprocessor(layout, layout, backend=backend, reference_device=reference_device)
+      transforms = (np.array([[3.1, .03, 130], [.02, 3.9, 55], [.00001, -.00003, 1]], dtype=np.float32),
+                    np.array([[2.8, -.02, 170], [.015, 3.5, 100], [-.00002, .00001, 1]], dtype=np.float32))
+      preprocessor.warmup(transforms)
+      rng = np.random.default_rng(24)
+      nv12_frames = [tuple(rng.integers(0, 256, layout.nbytes, dtype=np.uint8).tobytes() for _ in range(2)) for _ in range(4)]
+    source_name = 'synthetic-nv12' if args.synthetic_nv12 else 'synthetic' if args.synthetic else 'recorded-warps'
+    log.write({'event': 'start', 'source': source_name,
+               'sourceQoS': 'user-interactive' if qos else 'default',
+               'preprocessingProfile': preprocessing_profile,
                'clock': 'local scheduled playback; NOT live camera EOF', 'targetMs': 50,
                'staleStopMs': 150, 'contextFrames': 66, 'roadReady': False})
     validate_identity(client.connect())
     synthetic_pixels = np.random.default_rng(0).integers(0, 256, WARPED_SHAPE, dtype=np.uint8).tobytes()
     synthetic_policy = POLICY_INPUTS.pack(*([0.] * 8), 1., 0., .1, .1)
+    # Setup/compilation/allocation is complete. Refcounted per-frame temporaries
+    # remain bounded; don't schedule cyclic collection in the measured loop.
+    gc.collect()
+    gc.disable()
     origin = time.monotonic_ns()
     for frame in range(args.frames):
       scheduled = origin + frame * 50_000_000
       remaining = (scheduled - time.monotonic_ns()) / 1e9
       if remaining > 0:
         time.sleep(remaining)
+      wake_lateness = max(0., (time.monotonic_ns() - scheduled) / 1e6)
       pixels = synthetic_pixels if warps is None else warps[frame].tobytes(order='C')
+      preprocessing = None
+      if preprocessor is not None:
+        pair = nv12_frames[frame % len(nv12_frames)]
+        pixels, preprocessing = preprocessor.prepare(OwnedCameraFrame(frame, scheduled, pair[0]),
+                                                     OwnedCameraFrame(frame, scheduled, pair[1]), transforms)
       policy = synthetic_policy if policy_rows is None else policy_rows[frame].tobytes(order='C')
-      recorder.process(frame, scheduled, pixels, policy)
+      recorder.process(frame, scheduled, pixels, policy, preprocessing=preprocessing, wake_lateness_ms=wake_lateness)
     log.write({'event': 'complete', 'frames': recorder.next_frame, 'contextFramesMeasured': recorder.eligible,
                'targetMisses': recorder.misses, 'contextEstablished': recorder.eligible > 0,
                'sampleTimingTargetPass': recorder.eligible > 0 and recorder.misses == 0,
@@ -175,6 +221,8 @@ def main():
     print(f'Shadow stopped: {type(error).__name__}: {error}', file=sys.stderr)
     raise SystemExit(1) from None
   finally:
+    if gc_was_enabled:
+      gc.enable()
     client.close()
     log.close()
 

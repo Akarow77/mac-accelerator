@@ -19,12 +19,16 @@ def main() -> None:
   parser = argparse.ArgumentParser(description=__doc__)
   parser.add_argument('--frames', type=int, default=20)
   parser.add_argument('--shadow-log', type=Path, help='run observation-only replay and retain its private log')
+  parser.add_argument('--nv12', action='store_true', help='include owned synthetic NV12 pair preprocessing in shadow timing')
+  parser.add_argument('--preprocess-profile', type=Path)
   parser.add_argument('--disconnect-after', type=float, help='shadow-only test: terminate this test server after N seconds')
   args = parser.parse_args()
   if args.frames < 1:
     parser.error('--frames must be positive')
   if args.disconnect_after is not None and (not args.shadow_log or not 0 < args.disconnect_after < 30):
     parser.error('--disconnect-after requires --shadow-log and 0 < seconds < 30')
+  if (args.nv12 and not args.shadow_log) or (args.preprocess_profile and not args.nv12):
+    parser.error('--nv12 requires --shadow-log; --preprocess-profile requires --nv12')
   root = Path(__file__).resolve().parent
   with (root / 'models/big_driving_supercombo.onnx').open('rb') as handle:
     digest = hashlib.file_digest(handle, 'sha256').hexdigest()
@@ -61,9 +65,11 @@ def main() -> None:
         '--frames', str(args.frames), '--synthetic-random-prefix-bytes', '393216',
       ]
       if args.shadow_log:
-        command = [sys.executable, str(root / 'shadow_replay.py'), '--synthetic', '--port', str(port),
+        command = [sys.executable, str(root / 'shadow_replay.py'), '--synthetic-nv12' if args.nv12 else '--synthetic', '--port', str(port),
                    '--auth-key-file', str(key), '--expected-model-sha256', digest,
                    '--frames', str(args.frames), '--log', str(args.shadow_log.resolve())]
+        if args.preprocess_profile:
+          command.extend(['--preprocess-profile', str(args.preprocess_profile.resolve())])
       if args.disconnect_after is not None:
         timer = threading.Timer(args.disconnect_after, server.terminate)
         timer.start()

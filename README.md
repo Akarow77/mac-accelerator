@@ -113,6 +113,36 @@ compatibility; app/source ownership is independent of sunnypilot.
 
 ## Verification and research status
 
+### Preloaded camera preprocessing (bench only)
+
+An independent owned-NV12 preprocessing path can now be included in replay.
+It does not receive live 3X camera buffers. Optional tinygrad is used to build
+Metal-reference lookup maps at setup and compare CPU versus GPU per-frame work:
+
+```bash
+uv pip install --python .coreml-venv/bin/python -r requirements-preprocess.txt
+./build_native_preprocess.sh  # optional bounded CPU gather; requires Apple clang
+.coreml-venv/bin/python profile_preprocess.py --include-metal --runs 120 \
+  --output artifacts/preprocess-this-mac.json
+.coreml-venv/bin/python smoke_local.py --nv12 --frames 600 \
+  --preprocess-profile artifacts/preprocess-this-mac.json \
+  --shadow-log artifacts/shadow-nv12-001.jsonl
+```
+
+Choose fresh output paths. Profiles from another chip/OS or code version are
+rejected; a failed timing/byte-comparison candidate is not selected. A NumPy-only
+coordinate map is **not accepted** as an upstream-equivalent profile because
+rounding-boundary differences were found. The latest M2 selection was native CPU gather
+using precomputed tinygrad/Metal lookup maps, with Core ML CPU + NE inference.
+Calibration changes stop a warmed observer instead of compiling in the frame loop.
+The optional native library is built locally, checks buffer/index bounds, and is
+bound to its source hash. Rebuild and reprofile after preprocessing changes. This
+is a replay capability, not a new live-camera mode in the packaged Mac app.
+
+See [Chestnut analysis, measurements, ownership constraints and M1 feasibility](docs/CAMERA_PIPELINE.md).
+This adds no firmware changes or camera consumer, and does not resolve the earlier
+unknown physical reboot. Python/runtime/model preparation is still required.
+
 ### Observation-only shadow replay
 
 This is Mac-side replay, **not live 3X camera capture**. The easiest synthetic run

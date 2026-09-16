@@ -7,6 +7,8 @@ The upstream MIT license and copyright notice are retained in LICENSE.
 
 This is a separate source repository, not a sunnypilot fork or device firmware.
 It retains the benchmark protocol for compatibility, not vehicle-control code.
+The optional camera reference-map implementation is derived from the upstream
+MIT-licensed NV12 warp/packing formulas in `openpilot/selfdrive/modeld/compile_modeld.py`.
 The historical findings in docs describe the earlier combined experiment; they
 are not a claim that this standalone version has repeated all those tests.
 
