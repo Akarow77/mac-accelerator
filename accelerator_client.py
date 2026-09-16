@@ -223,7 +223,8 @@ class AcceleratorClient:
       prepared_ns = time.monotonic_ns()
       stage = 'send'
       set_remaining_timeout()
-      send_message_parts(self.socket, REQUEST, flags, self.session_id, frame_id, capture_ns, request_parts)
+      send_message_parts(self.socket, REQUEST, flags, self.session_id, frame_id, capture_ns, request_parts,
+                         deadline_ns=deadline_ns)
       sent_ns = time.monotonic_ns()
       stage = 'receive'
       set_remaining_timeout()
@@ -257,7 +258,9 @@ class AcceleratorClient:
         if self.identity.output_dtype == 'float16':
           assert self._output_buffer is not None
           np.copyto(self._output_buffer, values, casting='unsafe')
-          output = memoryview(self._output_buffer).cast('B')
+          # Results may be retained by shadow logging/comparison callers. Never
+          # return a view into a buffer overwritten by the next inference.
+          output = self._output_buffer.tobytes()
         else:
           output = wire_output
       else:

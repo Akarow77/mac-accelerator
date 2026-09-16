@@ -113,6 +113,43 @@ compatibility; app/source ownership is independent of sunnypilot.
 
 ## Verification and research status
 
+### Observation-only shadow replay
+
+This is Mac-side replay, **not live 3X camera capture**. The easiest synthetic run
+starts and stops its own localhost server and retains a private log:
+
+```bash
+.coreml-venv/bin/python smoke_local.py --frames 120 \
+  --shadow-log artifacts/shadow-test-001.jsonl
+```
+
+Use a new log filename on every run. Disconnect injection (expected failure):
+
+```bash
+.coreml-venv/bin/python smoke_local.py --frames 120 \
+  --shadow-log artifacts/shadow-disconnect-001.jsonl --disconnect-after 1.5
+```
+
+For real recorded inputs, run the app's localhost server and use:
+
+```bash
+.coreml-venv/bin/python shadow_replay.py \
+  --warps /path/warps.npy --policy /path/policy.npy --frames 120 \
+  --auth-key-file "$HOME/Library/Application Support/Mac Accelerator/auth.key" \
+  --expected-model-sha256 <SHA256-of-your-source-ONNX> \
+  --log artifacts/shadow-recorded-001.jsonl
+```
+
+Warps must be uint8 `[frames,2,6,128,256]`; policy must be matching float32
+`[frames,12]` in protocol order. Pickled NumPy arrays are rejected. The recording
+must contain every requested frame; it is never looped. No raw-video conversion
+or captured policy fabrication is done by this tool. This run measures local
+scheduled-playback-to-output age, not original camera EOF latency.
+
+After 66 contiguous frames, per-frame timing misses against 50ms are counted.
+150ms is a stale-stop limit, **not** a passing real-time budget. All results remain
+observation-only. See [boundaries and the live capture gate](docs/SHADOW_DESIGN.md).
+
 ```bash
 .coreml-venv/bin/python -m unittest discover -s . -p 'test_*.py'
 ```

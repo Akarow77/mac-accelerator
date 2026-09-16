@@ -10,7 +10,7 @@ except ModuleNotFoundError as error:
   if error.name != 'coremltools':
     raise
   CoreMLPolicySession = None
-from transport import POLICY_INPUTS, WARPED_BYTES, WARPED_SHAPE
+from transport import POLICY_INPUTS, WARPED_BYTES, WARPED_SHAPE, ProtocolError
 
 
 class FakeModel:
@@ -47,6 +47,13 @@ class CoreMLPolicySessionTest(unittest.TestCase):
     policy = POLICY_INPUTS.pack(1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.1, 0.1)
     payload = warped.tobytes() + policy
     self.assertEqual(len(payload), WARPED_BYTES + POLICY_INPUTS.size)
+
+    bad_policy = POLICY_INPUTS.pack(*([float('nan')] * 12))
+    with self.assertRaisesRegex(ProtocolError, 'non-finite policy'):
+      session.infer(warped.tobytes() + bad_policy)
+    self.assertEqual(model.calls, [])
+    self.assertFalse(session.image_q.any())
+    self.assertFalse(session.desire_q.any())
 
     session.infer(payload)
     session.infer(payload)

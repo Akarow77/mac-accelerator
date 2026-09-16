@@ -52,10 +52,15 @@ def recv_exact(sock: socket.socket, size: int, deadline_ns: int | None = None) -
   return bytes(buffer)
 
 
-def _send_parts(sock: socket.socket, parts: list[memoryview]) -> None:
+def _send_parts(sock: socket.socket, parts: list[memoryview], deadline_ns: int | None = None) -> None:
   """Send several buffers without first joining the 393 KiB request."""
   pending = [part for part in parts if len(part)]
   while pending:
+    if deadline_ns is not None:
+      remaining = (deadline_ns - time.monotonic_ns()) / 1e9
+      if remaining <= 0:
+        raise TimeoutError('send absolute deadline expired')
+      sock.settimeout(remaining)
     if hasattr(sock, 'sendmsg'):
       sent = sock.sendmsg(pending)
     else:
@@ -69,7 +74,10 @@ def _send_parts(sock: socket.socket, parts: list[memoryview]) -> None:
 
 
 def send_message_parts(sock: socket.socket, msg_type: int, flags: int, session_id: int,
-                       frame_id: int, capture_ns: int, payload_parts: Iterable[bytes | memoryview]) -> None:
+                       frame_id: int, capture_ns: int, payload_parts: Iterable[bytes | memoryview],
+                       *, deadline_ns: int | None = None) -> None:
+  if deadline_ns is None and (timeout := sock.gettimeout()) is not None:
+    deadline_ns = time.monotonic_ns() + int(timeout * 1e9)
   parts = [memoryview(part).cast('B') for part in payload_parts]
   payload_len = sum(map(len, parts))
   if payload_len > MAX_PAYLOAD_BYTES:
@@ -80,7 +88,7 @@ def send_message_parts(sock: socket.socket, msg_type: int, flags: int, session_i
   checksum &= 0xFFFFFFFF
   header = HEADER.pack(MAGIC, VERSION, msg_type, flags, session_id, frame_id,
                        capture_ns, payload_len, checksum)
-  _send_parts(sock, [memoryview(header), *parts])
+  _send_parts(sock, [memoryview(header), *parts], deadline_ns)
 
 
 def send_message(sock: socket.socket, msg_type: int, flags: int, session_id: int,

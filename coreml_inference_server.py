@@ -69,6 +69,8 @@ class CoreMLPolicySession:
       raise ProtocolError(f'request length {len(payload)} != {REQUEST_BYTES}')
     warped = np.frombuffer(payload, dtype=np.uint8, count=WARPED_BYTES).reshape(WARPED_SHAPE)
     *desire, traffic0, traffic1, action0, action1 = POLICY_INPUTS.unpack_from(payload, WARPED_BYTES)
+    if not all(math.isfinite(value) for value in (*desire, traffic0, traffic1, action0, action1)):
+      raise ProtocolError('non-finite policy input')
 
     self.image_q[:-1] = self.image_q[1:]
     self.image_q[-1] = warped[0]
@@ -169,7 +171,7 @@ def main() -> None:
   parser.add_argument('--host', default='::1')
   parser.add_argument('--port', type=int, default=8066)
   parser.add_argument('--timeout', type=float, default=2.0)
-  parser.add_argument('--auth-key-file', type=Path)
+  parser.add_argument('--auth-key-file', type=Path, required=True)
   parser.add_argument('--startup-warmup', type=int, default=3)
   parser.add_argument('--frame-skip', type=int, default=2)
   parser.add_argument('--slow-log-ms', type=float, default=40.0)
