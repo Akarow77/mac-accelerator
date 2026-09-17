@@ -14,6 +14,7 @@ import torch
 
 from coreml_inference_server import CoreMLPolicySession
 from benchmark_coreml import COMPUTE_UNITS
+from model_contract import BIG_MODEL_FRAME_SKIP
 from transport import POLICY_INPUTS, WARPED_SHAPE
 
 
@@ -68,8 +69,8 @@ def main() -> None:
   coreml_output_name = coreml_model.get_spec().description.output[0].name
   torch_model = torch.jit.load(args.torch_reference).eval().half()
   rng = np.random.default_rng(20260914)
-  coreml_session = CoreMLPolicySession(coreml_model, metadata, coreml_output_name, frame_skip=2)
-  torch_session = CoreMLPolicySession(TorchAdapter(torch_model), metadata, 'output', frame_skip=2,
+  coreml_session = CoreMLPolicySession(coreml_model, metadata, coreml_output_name, frame_skip=BIG_MODEL_FRAME_SKIP)
+  torch_session = CoreMLPolicySession(TorchAdapter(torch_model), metadata, 'output', frame_skip=BIG_MODEL_FRAME_SKIP,
                                       output_dtype='<f4')
   warps = np.load(args.warps) if args.warps is not None else None
   if warps is not None and (warps.shape[1:] != WARPED_SHAPE or len(warps) < args.samples):

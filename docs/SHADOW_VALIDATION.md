@@ -1,5 +1,10 @@
 # Shadow hardening verification — 2026-09-16
 
+Historical record: these runs used stride 2 and the former 66-frame context
+threshold. The [2026-09-17 review](UPSTREAM_BIG_MODEL_REVIEW_2026-09-17.md)
+corrected the model contract to stride 4 / 132 frames. Durations below are retained
+as diagnostics, not validation of the corrected temporal contract.
+
 Device scope: MacBook Air M2 only. No ADB, 3X firmware, Params, live camera hook or
 vehicle-control integration was used in this work.
 

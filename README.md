@@ -149,7 +149,7 @@ This is Mac-side replay, **not live 3X camera capture**. The easiest synthetic r
 starts and stops its own localhost server and retains a private log:
 
 ```bash
-.coreml-venv/bin/python smoke_local.py --frames 120 \
+.coreml-venv/bin/python smoke_local.py --frames 200 \
   --shadow-log artifacts/shadow-test-001.jsonl
 ```
 
@@ -164,7 +164,7 @@ For real recorded inputs, run the app's localhost server and use:
 
 ```bash
 .coreml-venv/bin/python shadow_replay.py \
-  --warps /path/warps.npy --policy /path/policy.npy --frames 120 \
+  --warps /path/warps.npy --policy /path/policy.npy --frames 200 \
   --auth-key-file "$HOME/Library/Application Support/Mac Accelerator/auth.key" \
   --expected-model-sha256 <SHA256-of-your-source-ONNX> \
   --log artifacts/shadow-recorded-001.jsonl
@@ -176,9 +176,20 @@ must contain every requested frame; it is never looped. No raw-video conversion
 or captured policy fabrication is done by this tool. This run measures local
 scheduled-playback-to-output age, not original camera EOF latency.
 
-After 66 contiguous frames, per-frame timing misses against 50ms are counted.
+After 132 contiguous frames (33 context steps at stride 4), per-frame timing misses
+against 50ms are counted. Older stride-2/66-frame reports do not validate this contract.
 150ms is a stale-stop limit, **not** a passing real-time budget. All results remain
 observation-only. See [boundaries and the live capture gate](docs/SHADOW_DESIGN.md).
+
+Mac-only experiments and upstream review:
+
+- [Current research status / 최신 연구 현황 (2026-09-17)](docs/RESEARCH_STATUS_2026-09-17.md)
+- [GPU next-frame / ANE current-frame pipeline measurements](docs/FRAME_PIPELINE_EXPERIMENT_2026-09-17.md)
+- [Official Big Model/Chestnut sources, temporal correction and IPv4 proposal](docs/UPSTREAM_BIG_MODEL_REVIEW_2026-09-17.md)
+- [EXO design review and resource-profiling limits](docs/EXO_REVIEW_2026-09-17.md)
+- [Chestnut transfer techniques and isolated wire-overhead measurements](docs/CHESTNUT_TRANSPORT_REVIEW_2026-09-17.md)
+
+The experimental split pipeline is not used by the app or network server.
 
 ```bash
 .coreml-venv/bin/python -m unittest discover -s . -p 'test_*.py'

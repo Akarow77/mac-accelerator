@@ -16,6 +16,7 @@ import numpy as np
 from accelerator_client import AcceleratorClient
 from accelerator_protocol import read_auth_key
 from macos_performance import configure_user_interactive_qos
+from model_contract import BIG_MODEL_CONTEXT_FRAMES, BIG_MODEL_FRAME_SKIP
 from transport import POLICY_INPUTS, WARPED_BYTES, WARPED_SHAPE
 
 
@@ -45,7 +46,8 @@ class ShadowRecorder:
   capture_ns is a timestamp in THIS process host's monotonic clock. Replay uses
   scheduled local playback time, never a foreign device's monotonic timestamp.
   """
-  def __init__(self, client, log, *, target_ms=50., max_age_ms=150., context_frames=66, clock=time.monotonic_ns):
+  def __init__(self, client, log, *, target_ms=50., max_age_ms=150.,
+               context_frames=BIG_MODEL_CONTEXT_FRAMES, clock=time.monotonic_ns):
     if (not all(math.isfinite(x) and x > 0 for x in (target_ms, max_age_ms))
         or max_age_ms < target_ms or context_frames < 1):
       raise ValueError('invalid timing/context limits')
@@ -89,11 +91,19 @@ class ShadowRecorder:
       if values.size != 18452 or not np.isfinite(values).all():
         raise ValueError('invalid shadow output')
       age_ms = (completed - capture_ns) / 1e6
+      client_stages = {name: getattr(result, name) for name in ('prepare_ms', 'send_ms', 'receive_ms', 'validate_ms')}
+      if any(not math.isfinite(value) or value < 0 for value in client_stages.values()):
+        raise ValueError('invalid client stage timing')
       context = frame_id + 1 >= self.context_frames
       within = age_ms <= self.target_ms
       self.log.write({'event': 'frame', 'frame': frame_id, 'contextReady': context,
                       'scheduledPlaybackToOutputMs': age_ms,
                       'roundTripMs': result.round_trip_ms, 'inferenceMs': result.inference_ms,
+                      'clientStagesMs': client_stages,
+                      'serverPrepareMs': result.server_prepare_ms,
+                      # Cross-host clock offsets cancel for each duration, but
+                      # this residual also contains CPU/queue work, NOT just wire time.
+                      'nonInferenceRoundTripMs': result.round_trip_ms - result.inference_ms,
                       'withinTimingTarget': within, 'roadReady': False,
                       'outputSha256': hashlib.sha256(result.output).hexdigest(), 'preprocessing': preprocessing,
                       'sourceWakeLatenessMs': wake_lateness_ms})
@@ -110,7 +120,8 @@ def validate_identity(identity):
   expected = {'img': [1, 12, 128, 256], 'big_img': [1, 12, 128, 256],
               'desire_pulse': [1, 33, 8], 'traffic_convention': [1, 2],
               'action_t': [1, 2], 'features_buffer': [1, 32, 32, 512]}
-  if identity.frame_skip != 2 or identity.input_shapes != expected or identity.output_shapes != {'outputs': [1, 18452]}:
+  if (identity.frame_skip != BIG_MODEL_FRAME_SKIP or identity.input_shapes != expected
+      or identity.output_shapes != {'outputs': [1, 18452]}):
     raise ValueError('shadow Big Model temporal/shape contract mismatch')
 
 
@@ -122,7 +133,7 @@ def main():
   source.add_argument('--warps', type=Path, help='uint8 .npy [frames,2,6,128,256], allow_pickle=False')
   parser.add_argument('--policy', type=Path, help='matching float32 .npy [frames,12], required for recorded warps')
   parser.add_argument('--preprocess-profile', type=Path, help='same-hardware measured profile for --synthetic-nv12')
-  parser.add_argument('--frames', type=int, default=120)
+  parser.add_argument('--frames', type=int, default=200)
   parser.add_argument('--host', default='::1')
   parser.add_argument('--port', type=int, default=8066)
   parser.add_argument('--auth-key-file', type=Path, required=True)
@@ -184,7 +195,7 @@ def main():
                'sourceQoS': 'user-interactive' if qos else 'default',
                'preprocessingProfile': preprocessing_profile,
                'clock': 'local scheduled playback; NOT live camera EOF', 'targetMs': 50,
-               'staleStopMs': 150, 'contextFrames': 66, 'roadReady': False})
+               'staleStopMs': 150, 'contextFrames': BIG_MODEL_CONTEXT_FRAMES, 'roadReady': False})
     validate_identity(client.connect())
     synthetic_pixels = np.random.default_rng(0).integers(0, 256, WARPED_SHAPE, dtype=np.uint8).tobytes()
     synthetic_policy = POLICY_INPUTS.pack(*([0.] * 8), 1., 0., .1, .1)

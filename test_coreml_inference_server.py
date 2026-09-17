@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 
 try:
-  from coreml_inference_server import CoreMLPolicySession
+  from coreml_inference_server import CoreMLPolicySession, make_identity
 except ModuleNotFoundError as error:
   if error.name != 'coremltools':
     raise
@@ -73,6 +73,23 @@ class CoreMLPolicySessionTest(unittest.TestCase):
     self.assertTrue(np.all(reset_call['img'][:, :6] == 0))
     self.assertTrue(np.all(reset_call['features_buffer'] == 0))
     self.assertEqual(reset_call['desire_pulse'][0, -1, 0], 1.0)
+
+    # The bundled model uses stride 4. Frame 4 must see image 0 and
+    # the hidden state from frame 0, never future or immediately previous data.
+    self.assertEqual(make_identity(metadata, '0' * 64)['frame_skip'], 4)
+    four = FakeModel()
+    session = CoreMLPolicySession(four, metadata, 'output', frame_skip=4)
+    for frame in range(5):
+      warped.fill(frame + 1)
+      session.infer(warped.tobytes() + policy)
+    self.assertTrue(np.all(four.calls[3]['img'][:, :6] == 0))
+    self.assertTrue(np.all(four.calls[4]['img'][:, :6] == 1))
+    self.assertTrue(np.all(four.calls[4]['img'][:, 6:] == 5))
+    self.assertTrue(np.all(four.calls[3]['features_buffer'] == 0))
+    self.assertTrue(np.all(four.calls[4]['features_buffer'][:, -1] == 1))
+    for invalid in (0, -1, 1.5, True):
+      with self.assertRaisesRegex(ValueError, 'positive integer'):
+        CoreMLPolicySession(four, metadata, 'output', frame_skip=invalid)
 
 
 if __name__ == '__main__':

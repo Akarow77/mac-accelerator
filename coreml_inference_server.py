@@ -18,6 +18,7 @@ import numpy as np
 from accelerator_protocol import authenticate_payload, read_auth_key, server_handshake, verify_payload
 from compression import ZstdCodec, ZstdError
 from macos_performance import configure_user_interactive_qos
+from model_contract import BIG_MODEL_FRAME_SKIP
 from transport import (DEVICE_TYPE, FLAG_RESET, FLAG_ZSTD_REQUEST, POLICY_INPUTS, REQUEST, REQUEST_BYTES,
                        RESPONSE, TIMINGS, VERSION, WARPED_BYTES, WARPED_SHAPE,
                        ProtocolError, recv_message, send_message)
@@ -39,6 +40,8 @@ class CoreMLPolicySession:
                output_dtype: str = '<f2'):
     if output_dtype not in ('<f2', '<f4'):
       raise ValueError(f'unsupported session output dtype: {output_dtype}')
+    if type(frame_skip) is not int or frame_skip < 1:
+      raise ValueError('frame_skip must be a positive integer')
     self.model = model
     self.metadata = metadata
     self.output_name = output_name
@@ -96,7 +99,7 @@ class CoreMLPolicySession:
     return output.astype(self.output_dtype, copy=False).tobytes()
 
 
-def make_identity(metadata: dict, model_sha256: str, frame_skip: int = 2) -> dict:
+def make_identity(metadata: dict, model_sha256: str, frame_skip: int = BIG_MODEL_FRAME_SKIP) -> dict:
   return {
     'authentication_required': False,
     'backend': BACKEND,
@@ -173,7 +176,7 @@ def main() -> None:
   parser.add_argument('--timeout', type=float, default=2.0)
   parser.add_argument('--auth-key-file', type=Path, required=True)
   parser.add_argument('--startup-warmup', type=int, default=3)
-  parser.add_argument('--frame-skip', type=int, default=2)
+  parser.add_argument('--frame-skip', type=int, default=BIG_MODEL_FRAME_SKIP)
   parser.add_argument('--slow-log-ms', type=float, default=40.0)
   parser.add_argument('--specialization-strategy', choices=('default', 'fast-prediction'),
                       default='fast-prediction')

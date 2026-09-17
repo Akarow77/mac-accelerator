@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import json
+import hashlib
+import hmac
 import socket
 import struct
 import threading
@@ -57,6 +59,28 @@ class AcceleratorProtocolTest(unittest.TestCase):
     key = b'k' * 32
     parts = authenticate_payload_parts(key, REQUEST, 1, 7, 9, 11, (b'pay', memoryview(b'load')))
     self.assertEqual(b''.join(parts), authenticate_payload(key, REQUEST, 1, 7, 9, 11, b'payload'))
+
+  def test_payload_auth_matches_legacy_wire_format_for_large_request(self):
+    key = b'k' * 32
+    payload = bytes(range(256)) * 1536 + bytes(POLICY_INPUTS.size)
+    metadata = struct.pack('!BBHQQQ', VERSION, REQUEST, 1, 7, 9, 11)
+    legacy = payload + hmac.new(key, b'SPMA-PAYLOAD-v2\0' + metadata + payload, hashlib.sha256).digest()
+    self.assertEqual(authenticate_payload(key, REQUEST, 1, 7, 9, 11, payload), legacy)
+    result = verify_payload(key, REQUEST, 1, 7, 9, 11, legacy)
+    self.assertIsInstance(result, bytes)
+    self.assertEqual(result, payload)
+    for values in ((RESPONSE, 1, 7, 9, 11), (REQUEST, 0, 7, 9, 11), (REQUEST, 1, 8, 9, 11),
+                   (REQUEST, 1, 7, 10, 11), (REQUEST, 1, 7, 9, 12)):
+      with self.assertRaisesRegex(ProtocolError, 'authentication'):
+        verify_payload(key, *values, legacy)
+
+  def test_empty_and_truncated_authenticated_payloads(self):
+    key = b'k' * 32
+    wire = authenticate_payload(key, REQUEST, 0, 1, 2, 3, b'')
+    self.assertEqual(verify_payload(key, REQUEST, 0, 1, 2, 3, wire), b'')
+    for size in range(32):
+      with self.assertRaisesRegex(ProtocolError, 'missing'):
+        verify_payload(key, REQUEST, 0, 1, 2, 3, wire[:size])
 
   def test_authenticated_handshake(self) -> None:
     client, server = socket.socketpair()

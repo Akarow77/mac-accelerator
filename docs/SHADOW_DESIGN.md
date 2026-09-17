@@ -22,7 +22,8 @@ are needed or deployed. No remote model outputs enter a control path.
   authentication. The source SHA still does not prove converted-package provenance.
 - Strict frame sequence and monotonic playback timestamps. A gap or invalid clock
   latches failure, rather than carrying recurrent state across missing frames.
-- 66 consecutive frames before context is reported. This is context length, not
+- 132 consecutive frames before context is reported (33 context steps, stride 4).
+  Earlier stride-2/66-frame results do not validate this temporal contract. This is context length, not
   proof of numerical equivalence or model quality.
 - 50ms age target counted separately from the 150ms stale-stop diagnostic limit.
   A 60ms frame is logged as a miss, not a timing pass. Repeated overload accumulates

@@ -53,7 +53,9 @@ complete request round trip with its own clock.
 
 Only one request may be in flight. Frame IDs must be sequential at the client and
 strictly increasing at the server. Duplicate/backward frames are rejected. The
-Core ML session uses `frame_skip=2` by default. The synthetic client's transport
+Core ML session uses `frame_skip=4` by default for the 32-step Big Model. Earlier
+stride-2 replay reports do not validate the upstream temporal contract.
+The synthetic client's transport
 qualification does not establish camera context, recurrent accuracy or road readiness.
 
 ## Readiness and failure behavior

@@ -7,6 +7,7 @@ from unittest.mock import Mock
 import numpy as np
 
 from shadow_replay import BoundedLog, ShadowRecorder, validate_identity
+from model_contract import BIG_MODEL_CONTEXT_FRAMES, BIG_MODEL_FRAME_SKIP
 from transport import POLICY_INPUTS, WARPED_BYTES
 
 
@@ -14,7 +15,8 @@ class ShadowTests(unittest.TestCase):
   def setUp(self):
     self.client, self.log = Mock(), Mock()
     self.client.infer.return_value = Mock(output=np.zeros(18452, dtype='<f4').tobytes(),
-                                          round_trip_ms=25., inference_ms=20.)
+                                          round_trip_ms=25., inference_ms=20., prepare_ms=.2, send_ms=.3,
+                                          receive_ms=24., validate_ms=.5, server_prepare_ms=.1)
     self.clock = Mock(side_effect=[1_000_000_000, 1_025_000_000])
     self.recorder = ShadowRecorder(self.client, self.log, clock=self.clock)
     self.pixels, self.policy = bytes(WARPED_BYTES), bytes(POLICY_INPUTS.size)
@@ -28,6 +30,8 @@ class ShadowTests(unittest.TestCase):
     self.assertFalse(row['roadReady'])
     self.assertFalse(row['contextReady'])
     self.assertTrue(row['withinTimingTarget'])
+    self.assertEqual(row['clientStagesMs']['receive_ms'], 24.)
+    self.assertEqual(row['nonInferenceRoundTripMs'], 5.)
     self.assertEqual(self.client.infer.call_args.kwargs['deadline_ns'], 1_150_000_000)
 
   def test_slow_frame_is_counted_not_marked_timing_pass(self):
@@ -94,6 +98,25 @@ class ShadowTests(unittest.TestCase):
   def test_wrong_temporal_contract_rejected(self):
     with self.assertRaisesRegex(ValueError, 'contract'):
       validate_identity(Mock(frame_skip=1))
+
+  def test_stride_four_contract_and_full_context(self):
+    identity = Mock(frame_skip=BIG_MODEL_FRAME_SKIP,
+                    input_shapes={'img': [1, 12, 128, 256], 'big_img': [1, 12, 128, 256],
+                                  'desire_pulse': [1, 33, 8], 'traffic_convention': [1, 2],
+                                  'action_t': [1, 2], 'features_buffer': [1, 32, 32, 512]},
+                    output_shapes={'outputs': [1, 18452]})
+    validate_identity(identity)
+    identity.frame_skip = 2
+    with self.assertRaisesRegex(ValueError, 'contract'):
+      validate_identity(identity)
+    self.assertEqual(self.recorder.context_frames, 132)
+    self.assertEqual(BIG_MODEL_CONTEXT_FRAMES, 132)
+    for frame in range(132):
+      stamp = 1_000_000_000 + frame * 50_000_000
+      self.clock.side_effect = [stamp, stamp + 25_000_000]
+      self.process(frame=frame, stamp=stamp)
+      self.assertEqual(self.log.write.call_args.args[0]['contextReady'], frame == 131)
+    self.assertEqual(self.recorder.eligible, 1)
 
   def test_bounded_private_log_never_overwrites_and_reserves_failure(self):
     with tempfile.TemporaryDirectory() as directory:

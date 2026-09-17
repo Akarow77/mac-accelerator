@@ -49,6 +49,7 @@ class InferenceResult:
   send_ms: float
   receive_ms: float
   validate_ms: float
+  server_prepare_ms: float = 0.0
 
 
 class AcceleratorClient:
@@ -287,6 +288,7 @@ class AcceleratorClient:
         (sent_ns - prepared_ns) / 1e6,
         (received_ns - sent_ns) / 1e6,
         (completed_ns - received_ns) / 1e6,
+        (inference_start_ns - server_receive_ns) / 1e6,
       )
     except Exception as error:
       now_ns = time.monotonic_ns()

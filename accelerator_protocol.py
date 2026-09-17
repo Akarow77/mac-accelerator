@@ -41,9 +41,7 @@ def authenticate_payload(key: bytes | None, msg_type: int, flags: int, session_i
                          frame_id: int, capture_ns: int, payload: bytes) -> bytes:
   if key is None:
     return payload
-  metadata = AUTH_METADATA.pack(VERSION, msg_type, flags, session_id, frame_id, capture_ns)
-  tag = hmac.new(key, b'SPMA-PAYLOAD-v2\0' + metadata + payload, hashlib.sha256).digest()
-  return payload + tag
+  return b''.join(authenticate_payload_parts(key, msg_type, flags, session_id, frame_id, capture_ns, (payload,)))
 
 
 def authenticate_payload_parts(key: bytes | None, msg_type: int, flags: int, session_id: int,
@@ -66,11 +64,15 @@ def verify_payload(key: bytes | None, msg_type: int, flags: int, session_id: int
     return wire_payload
   if len(wire_payload) < AUTH_TAG_BYTES:
     raise ProtocolError('missing payload authentication tag')
-  payload, tag = wire_payload[:-AUTH_TAG_BYTES], wire_payload[-AUTH_TAG_BYTES:]
-  expected = authenticate_payload(key, msg_type, flags, session_id, frame_id, capture_ns, payload)[-AUTH_TAG_BYTES:]
+  # Hash the received bytes in place. Rebuilding payload+tag merely to extract
+  # its tag copied a whole camera request twice. Keep one owned immutable return
+  # value so callers may retain it; do not expose a reusable receive buffer.
+  view = memoryview(wire_payload)
+  payload, tag = view[:-AUTH_TAG_BYTES], view[-AUTH_TAG_BYTES:]
+  expected = authenticate_payload_parts(key, msg_type, flags, session_id, frame_id, capture_ns, (payload,))[-1]
   if not hmac.compare_digest(tag, expected):
     raise ProtocolError('payload authentication failed')
-  return payload
+  return bytes(payload)
 
 
 def server_handshake(conn: socket.socket, identity: dict, auth_key: bytes | None) -> int:
