@@ -210,5 +210,7 @@ This extraction changes packaging, paths, identity and dependency boundaries;
 it does not solve the outstanding camera-copy/latency problem. Future work stays
 bench-only until isolation, recurrent accuracy and sustained timing are demonstrated.
 
+By Codex
+
 MIT code license; [source attribution and third-party notices](NOTICE.md).
 Independent experiment; not an official Apple, comma.ai or sunnypilot product.
