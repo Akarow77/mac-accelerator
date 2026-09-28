@@ -10,7 +10,16 @@ The native app launches a Core ML CPU + Neural Engine server with authenticated
 transport and a synthetic client. This is **bench research only**, not a road-use
 accelerator, native external GPU driver, or generic arbitrary-model host. Its model
 contract remains the Big Model driving-policy protocol from the original experiment.
-There is no live-camera hook, device parameter writer or control-output publisher.
+The Mac app has no live-camera hook, device parameter writer or control-output publisher.
+
+**2026-09-29 priority: power stability before latency.** Repeated comma 3X resets
+with the direct Mac USB connection included a fresh UVLO/SMPL reset indication,
+including after restoring sunnypilot master. The user reports stability after
+disconnecting the Mac. The cause and fix are **not yet confirmed**. Do not use
+the direct connection in a vehicle or treat historical timing as qualification.
+See [power investigation and next candidates](docs/POWER_STABILITY_STATUS.md),
+[improvements and unresolved work](docs/PROGRESS_2026-09-29.md), and the
+[Chestnut/power-source review](docs/USB_POWER_ISOLATION_RESEARCH_2026-09-29.md).
 
 ## Install
 
@@ -110,6 +119,13 @@ explicitly enables transient USB-NCM interface setup and scoped-link supervision
 It does not deploy code or set device parameters. No device work is required for
 normal Mac-only operation. The legacy wire identity is retained for protocol
 compatibility; app/source ownership is independent of sunnypilot.
+
+That optional path is currently **not recommended for vehicle-connected use**
+pending the power investigation above. Mac-only operation is independent of it.
+Experimental files in `tools/` include explicit device-side bench operations
+(temporary camera startup, CPU-online holds and file staging); these are not
+run by the app. Offroad state alone does not prove physical vehicle separation.
+Do not run those tools on a vehicle-connected device.
 
 ## Verification and research status
 

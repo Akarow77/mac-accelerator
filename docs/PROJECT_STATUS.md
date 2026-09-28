@@ -1,5 +1,9 @@
 # M2 Mac accelerator: progress and outlook
 
+Latest: [2026-09-29 progress](PROGRESS_2026-09-29.md) and
+[power-stability investigation](POWER_STABILITY_STATUS.md). Those reports
+supersede this historical report for current blockers and next steps.
+
 Historical report from the combined sunnypilot experiment (0.2.2), preserved for
 evidence. Mac Accelerator now lives in its own repository; see the
 [standalone setup](../README.md). References to removed live/replay tools below
