@@ -194,3 +194,44 @@ transport yet. With 1 GbE, calibrated preprocessing on the 3X before transmissio
 is still needed for this two-camera 20 Hz uncompressed design. Chestnut's upload
 batching, persistent GPU state and bounded plane copies are useful separately
 from its faster USB GPU link; they do not make 1 GbE carry 1.195 Gbps.
+
+### What about 5 GbE at both ends?
+
+It is a plausible bandwidth candidate, **not yet a supported configuration**.
+Using the 7,471,104-byte NV12 pair above, ideal link serialization alone is:
+
+| Ethernet rate | Ideal NV12-pair serialization (no overhead) |
+| --- | ---: |
+| 1 Gbps | 59.77 ms |
+| 2.5 Gbps | 23.91 ms |
+| 5 Gbps | 11.95 ms |
+
+Neither table nor link negotiation predicts application latency. Both USB
+adapters, host USB transfer overhead, drivers, TCP, copies, authentication and
+scheduling remain. In particular a 5 Gbps USB uplink cannot deliver 5 Gbps of
+application data after encoding/protocol overhead. The previous direct NCM link
+already negotiated 5 Gbps yet achieved only 470 Mbps in a short 3X-to-Mac bulk
+test, with substantial sender CPU time in later profiles. A different host NIC
+driver might improve that path, but no such improvement has been measured.
+
+Compatibility is a separate blocker. The inspected official kernel's
+[USB network Kconfig](https://github.com/commaai/agnos-kernel-sdm845/blob/b53ae06564df3d34f6914c5d0699594913b16626/drivers/net/usb/Kconfig)
+describes RTL8152/RTL8153 and AX88179 gigabit support and has no AQC111 entry.
+This does not establish the installed device's modules or whether an adapter
+offers another usable mode. A product's general Linux support statement is not
+proof of plug-and-play operation on this AGNOS build. For example,
+[StarTech US5GA30](https://www.startech.com/en-de/networking-io/us5ga30) specifies
+AQC111U and USB power; its listed OS support is not a verification for M2 macOS
+or 3X. This is a compatibility example, **not a purchase recommendation**.
+
+Before choosing adapters, verify exact chipset/revision, installed AGNOS kernel
+and driver binding, actual 3X host-mode USB speed, M2 macOS support, and available
+power/thermal margin. Each endpoint powering its own NIC removes the direct
+inter-device USB VBUS path, but the 3X NIC still draws power and can introduce a
+new stability problem. Use non-PoE Ethernet; no kernel modification is authorized
+or performed by this research update.
+
+The minimum useful next test is enumeration/power stability, then authenticated
+real-size pair latency under local-model load, not just a 5 Gbps link icon or an
+iperf peak. 5 GbE could make a Mac-side warp design feasible on bandwidth; only
+measurements can determine whether the remaining preprocessing/inference fits.
