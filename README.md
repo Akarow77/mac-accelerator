@@ -1,5 +1,7 @@
 # Mac Accelerator
 
+[English](README.md) · [한국어](README.ko.md)
+
 Independent Apple Silicon / Core ML inference benchmark app and server.
 Extracted from the sunnypilot M2 experiment; **no sunnypilot checkout, tinygrad,
 device firmware or vehicle-control code is required to build or run this project.**
@@ -14,12 +16,22 @@ The Mac app has no live-camera hook, device parameter writer or control-output p
 
 **2026-09-29 priority: power stability before latency.** Repeated comma 3X resets
 with the direct Mac USB connection included a fresh UVLO/SMPL reset indication,
-including after restoring sunnypilot master. The user reports stability after
-disconnecting the Mac. The cause and fix are **not yet confirmed**. Do not use
+including after restoring sunnypilot master. Operator observations report no
+resets with the Mac disconnected or in the vehicle-detached environment.
+The vehicle + Mac USB combination is therefore the
+reported failing condition; test durations and loads were not matched.
+The cause and fix are **not yet confirmed**. Do not use
 the direct connection in a vehicle or treat historical timing as qualification.
-See [power investigation and next candidates](docs/POWER_STABILITY_STATUS.md),
+See [power stability status](docs/POWER_STABILITY_STATUS.md),
 [improvements and unresolved work](docs/PROGRESS_2026-09-29.md), and the
 [Chestnut/power-source review](docs/USB_POWER_ISOLATION_RESEARCH_2026-09-29.md).
+
+### Research / 연구
+
+- Current research: [English](docs/RESEARCH_SUMMARY.md) · [한국어](docs/RESEARCH_SUMMARY.ko.md)
+
+The project overview and current research summary are available in English and
+Korean. Historical technical reports retain their original languages.
 
 ## Install
 
